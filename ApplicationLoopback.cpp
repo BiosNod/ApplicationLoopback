@@ -4,6 +4,7 @@
 #include <Windows.h>
 #include <iostream>
 #include "LoopbackCapture.h"
+#include <conio.h>
 
 void usage()
 {
@@ -70,7 +71,21 @@ int wmain(int argc, wchar_t* argv[])
     else
     {
         std::wcout << L"Capturing 10 seconds of audio." << std::endl;
-        Sleep(10000);
+        
+        // Ожидаем нажатия клавиши Q для остановки
+        bool stopCapture = false;
+        while (!stopCapture)
+        {
+            if (_kbhit()) // Проверяем, нажата ли клавиша
+            {
+                int key = _getch(); // Получаем код нажатой клавиши
+                if (key == 'q' || key == 'Q')
+                {
+                    stopCapture = true;
+                }
+            }
+            Sleep(100); // Небольшая задержка для снижения нагрузки на CPU
+        }
 
         loopbackCapture.StopCaptureAsync();
 
