@@ -6,6 +6,7 @@
 #include "LoopbackCapture.h"
 
 #define BITS_PER_BYTE 8
+#define SILENCE_THRESHOLD 10  // Порог для определения тишины (для 16-битных сэмплов)
 
 HRESULT CLoopbackCapture::SetDeviceStateErrorIfFailed(HRESULT hr)
 {
@@ -45,6 +46,32 @@ CLoopbackCapture::~CLoopbackCapture()
     if (m_dwQueueID != 0)
     {
         MFUnlockWorkQueue(m_dwQueueID);
+    }
+}
+
+// Определяет, содержит ли буфер аудиосигнал или только тишину
+bool CLoopbackCapture::ContainsAudio(const BYTE* data, UINT32 byteCount)
+{
+    // Для 16-битных сэмплов
+    if (m_CaptureFormat.wBitsPerSample == 16)
+    {
+        const SHORT* samples = reinterpret_cast<const SHORT*>(data);
+        UINT32 sampleCount = byteCount / sizeof(SHORT);
+
+        for (UINT32 i = 0; i < sampleCount; i++)
+        {
+            if (abs(samples[i]) > SILENCE_THRESHOLD)
+            {
+                return true; // Найден звук
+            }
+        }
+        return false; // Только тишина
+    }
+    // Можно добавить обработку для других битностей (8, 24, 32)
+    else
+    {
+        // По умолчанию для неподдерживаемых форматов считаем, что звук есть
+        return true;
     }
 }
 
@@ -256,8 +283,11 @@ HRESULT CLoopbackCapture::FixWAVHeader()
     return S_OK;
 }
 
-HRESULT CLoopbackCapture::StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName)
+HRESULT CLoopbackCapture::StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName, bool skipSilence)
 {
+    // Сохраняем флаг пропуска тишины
+    m_skipSilence = skipSilence;
+
     // Check if we're using stream output
     if (wcscmp(outputFileName, L"-stream") == 0)
     {
@@ -457,8 +487,14 @@ HRESULT CLoopbackCapture::OnAudioSampleRequested()
         // Get sample buffer
         RETURN_IF_FAILED(m_AudioCaptureClient->GetBuffer(&Data, &FramesAvailable, &dwCaptureFlags, &u64DevicePosition, &u64QPCPosition));
 
+        // Проверка на тишину перед записью данных
+        bool shouldWrite = true;
+        if (m_skipSilence) {
+            shouldWrite = ContainsAudio(Data, cbBytesToCapture);
+        }
+
         // Write to File or Stream
-        if (m_DeviceState != DeviceState::Stopping)
+        if (m_DeviceState != DeviceState::Stopping && shouldWrite)
         {
             if (m_streamOutput)
             {

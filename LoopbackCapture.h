@@ -5,9 +5,9 @@
 #include <initguid.h>
 #include <guiddef.h>
 #include <mfapi.h>
-#include <fcntl.h> // Для _O_BINARY
-#include <io.h>    // Для _setmode и _fileno
-#include <stdio.h> // Для FILE и связанных функций
+#include <fcntl.h> // для _O_BINARY
+#include <io.h>    // для _setmode и _fileno
+#include <stdio.h> // для FILE и файловых функций
 
 #include <wrl\implements.h>
 #include <wil\com.h>
@@ -24,7 +24,7 @@ public:
     CLoopbackCapture() = default;
     ~CLoopbackCapture();
 
-    HRESULT StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName);
+    HRESULT StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName, bool skipSilence = false);
     HRESULT StopCaptureAsync();
 
     METHODASYNCCALLBACK(CLoopbackCapture, StartCapture, OnStartCapture);
@@ -60,6 +60,9 @@ private:
     HRESULT FixWAVHeader();
     HRESULT OnAudioSampleRequested();
 
+    // Проверяет, содержит ли буфер звук или тишину
+    bool ContainsAudio(const BYTE* data, UINT32 byteCount);
+
     HRESULT ActivateAudioInterface(DWORD processId, bool includeProcessTree);
     HRESULT FinishCaptureAsync();
 
@@ -83,7 +86,8 @@ private:
     // and the ActivateCompleted callback.
     PCWSTR m_outputFileName = nullptr;
     HRESULT m_activateResult = E_UNEXPECTED;
-    bool m_streamOutput = false; // Флаг, указывающий на вывод в поток
+    bool m_streamOutput = false; // флаг, указывающий на вывод в поток
+    bool m_skipSilence = false;  // флаг для пропуска тишины
 
     DeviceState m_DeviceState{ DeviceState::Uninitialized };
     wil::unique_event_nothrow m_hActivateCompleted;

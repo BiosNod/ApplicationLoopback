@@ -9,12 +9,13 @@
 void usage()
 {
     std::wcout <<
-        L"Usage: ApplicationLoopback <pid> <includetree|excludetree> <outputfilename>\n"
+        L"Usage: ApplicationLoopback <pid> <includetree|excludetree> <outputfilename> [-silence]\n"
         L"\n"
         L"<pid> is the process ID to capture or exclude from capture\n"
         L"includetree includes audio from that process and its child processes\n"
         L"excludetree includes audio from all processes except that process and its child processes\n"
         L"<outputfilename> is the WAV file to receive the captured audio, or '-stream' to output to stdout\n"
+        L"[-silence] is an optional flag to skip recording silence (only record when sound is present)\n"
         L"\n"
         L"Examples:\n"
         L"\n"
@@ -26,12 +27,20 @@ void usage()
         L"\n"
         L"  Captures audio from all processes except process 1234 and its children.\n"
         L"\n"
-        L"ApplicationLoopback 1234 includetree -stream > output.wav\n"
-        L"\n"
-        L"  Captures audio from process 1234 and outputs to stdout, which can be redirected.\n";
         L"ApplicationLoopback 1234 includetree -stream\n"
         L"\n"
-        L"  Captures audio from process 1234 and outputs to stdout without redirection.\n";
+        L"  Captures audio from process 1234 and outputs to stdout without redirection.\n"
+        L"ApplicationLoopback 1234 includetree -stream > output.wav\n"
+        L"\n"
+        L"  Captures audio from process 1234 and outputs to stdout, which can be redirected.\n"
+        L"\n"
+        L"ApplicationLoopback 1234 includetree -stream -silence\n"
+        L"\n"
+        L"  Captures audio from process 1234, outputs to stdout without redirection, and skips silence.\n"
+        L"\n"
+        L"ApplicationLoopback 1234 includetree CapturedAudio.wav -silence\n"
+        L"\n"
+        L"  Captures audio from process 1234 and its children, skipping periods of silence.\n";
 }
 
 bool ProcessExists(DWORD pid)
@@ -47,7 +56,7 @@ bool ProcessExists(DWORD pid)
 
 int wmain(int argc, wchar_t* argv[])
 {
-    if (argc != 4)
+    if (argc < 4 || argc > 5)
     {
         usage();
         return 0;
@@ -84,11 +93,19 @@ int wmain(int argc, wchar_t* argv[])
 
     PCWSTR outputFile = argv[3];
 
-    // Если используется режим потока, не выводим сообщения в консоль, чтобы не смешивать с бинарными данными
+    // Check for -silence flag
+    bool skipSilence = false;
+    if (argc == 5 && wcscmp(argv[4], L"-silence") == 0)
+    {
+        std::wcout << L"SKIP SILEBCE!!\n";
+        skipSilence = true;
+    }
+
+    // Если используется режим потока, то выводим сообщения в консоль, иначе их оставляем в командной строке
     bool isStreamMode = (wcscmp(outputFile, L"-stream") == 0);
 
     CLoopbackCapture loopbackCapture;
-    HRESULT hr = loopbackCapture.StartCaptureAsync(processId, includeProcessTree, outputFile);
+    HRESULT hr = loopbackCapture.StartCaptureAsync(processId, includeProcessTree, outputFile, skipSilence);
     if (FAILED(hr))
     {
         if (!isStreamMode)
@@ -103,7 +120,7 @@ int wmain(int argc, wchar_t* argv[])
     {
         if (!isStreamMode)
         {
-            std::wcout << L"Capturing audio. Press 'Q' to stop..." << std::endl;
+            std::wcout << L"Capturing audio" << (skipSilence ? L" (skipping silence)" : L"") << L". Press 'Q' to stop..." << std::endl;
         }
 
         // Ожидаем нажатия клавиши Q для остановки
