@@ -121,8 +121,20 @@ HRESULT CLoopbackCapture::ActivateCompleted(IActivateAudioInterfaceAsyncOperatio
             // Tell the system which event handle it should signal when an audio buffer is ready to be processed by the client
             RETURN_IF_FAILED(m_AudioClient->SetEventHandle(m_SampleReadyEvent.get()));
 
-            // Creates the WAV file.
-            RETURN_IF_FAILED(CreateWAVFile());
+            // Check if we're using stream output or file output
+            if (m_streamOutput)
+            {
+                // For stream output, we just prepare the binary mode for stdout
+                _setmode(_fileno(stdout), _O_BINARY);
+
+                // If streaming, write WAV header to stdout
+                WriteWAVHeader(stdout);
+            }
+            else
+            {
+                // Creates the WAV file.
+                RETURN_IF_FAILED(CreateWAVFile());
+            }
 
             // Everything is ready.
             m_DeviceState = DeviceState::Initialized;
@@ -132,6 +144,40 @@ HRESULT CLoopbackCapture::ActivateCompleted(IActivateAudioInterfaceAsyncOperatio
 
     // Let ActivateAudioInterface know that m_activateResult has the result of the activation attempt.
     m_hActivateCompleted.SetEvent();
+    return S_OK;
+}
+
+//
+// WriteWAVHeader()
+//
+// Write WAV header to the specified FILE stream
+//
+HRESULT CLoopbackCapture::WriteWAVHeader(FILE* file)
+{
+    // Create and write the WAV header
+    // 1. RIFF chunk descriptor
+    DWORD header[] = {
+                        FCC('RIFF'),        // RIFF header
+                        0,                  // Total size of WAV (will be filled in later)
+                        FCC('WAVE'),        // WAVE FourCC
+                        FCC('fmt '),        // Start of 'fmt ' chunk
+                        sizeof(m_CaptureFormat) // Size of fmt chunk
+    };
+
+    fwrite(header, sizeof(header), 1, file);
+    m_cbHeaderSize += sizeof(header);
+
+    // 2. The fmt sub-chunk
+    WI_ASSERT(m_CaptureFormat.cbSize == 0);
+    fwrite(&m_CaptureFormat, sizeof(m_CaptureFormat), 1, file);
+    m_cbHeaderSize += sizeof(m_CaptureFormat);
+
+    // 3. The data sub-chunk
+    DWORD data[] = { FCC('data'), 0 };  // Start of 'data' chunk
+    fwrite(data, sizeof(data), 1, file);
+    m_cbHeaderSize += sizeof(data);
+
+    fflush(file);
     return S_OK;
 }
 
@@ -184,6 +230,13 @@ HRESULT CLoopbackCapture::CreateWAVFile()
 //
 HRESULT CLoopbackCapture::FixWAVHeader()
 {
+    if (m_streamOutput)
+    {
+        // For stream output, we don't fix the header since we can't seek backward
+        // Some tools can still read the WAV data without a proper header size
+        return S_OK;
+    }
+
     // Write the size of the 'data' chunk first
     DWORD dwPtr = SetFilePointer(m_hFile.get(), m_cbHeaderSize - sizeof(DWORD), NULL, FILE_BEGIN);
     RETURN_LAST_ERROR_IF(INVALID_SET_FILE_POINTER == dwPtr);
@@ -205,7 +258,18 @@ HRESULT CLoopbackCapture::FixWAVHeader()
 
 HRESULT CLoopbackCapture::StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName)
 {
-    m_outputFileName = outputFileName;
+    // Check if we're using stream output
+    if (wcscmp(outputFileName, L"-stream") == 0)
+    {
+        m_streamOutput = true;
+        m_outputFileName = nullptr;
+    }
+    else
+    {
+        m_streamOutput = false;
+        m_outputFileName = outputFileName;
+    }
+
     auto resetOutputFileName = wil::scope_exit([&] { m_outputFileName = nullptr; });
 
     RETURN_IF_FAILED(InitializeLoopbackCapture());
@@ -393,17 +457,26 @@ HRESULT CLoopbackCapture::OnAudioSampleRequested()
         // Get sample buffer
         RETURN_IF_FAILED(m_AudioCaptureClient->GetBuffer(&Data, &FramesAvailable, &dwCaptureFlags, &u64DevicePosition, &u64QPCPosition));
 
-
-        // Write File
+        // Write to File or Stream
         if (m_DeviceState != DeviceState::Stopping)
         {
-            DWORD dwBytesWritten = 0;
-            RETURN_IF_WIN32_BOOL_FALSE(WriteFile(
-                m_hFile.get(),
-                Data,
-                cbBytesToCapture,
-                &dwBytesWritten,
-                NULL));
+            if (m_streamOutput)
+            {
+                // Write to stdout
+                fwrite(Data, 1, cbBytesToCapture, stdout);
+                fflush(stdout);
+            }
+            else
+            {
+                // Write to file
+                DWORD dwBytesWritten = 0;
+                RETURN_IF_WIN32_BOOL_FALSE(WriteFile(
+                    m_hFile.get(),
+                    Data,
+                    cbBytesToCapture,
+                    &dwBytesWritten,
+                    NULL));
+            }
         }
 
         // Release buffer back

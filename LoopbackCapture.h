@@ -5,6 +5,9 @@
 #include <initguid.h>
 #include <guiddef.h>
 #include <mfapi.h>
+#include <fcntl.h> // Для _O_BINARY
+#include <io.h>    // Для _setmode и _fileno
+#include <stdio.h> // Для FILE и связанных функций
 
 #include <wrl\implements.h>
 #include <wil\com.h>
@@ -53,6 +56,7 @@ private:
 
     HRESULT InitializeLoopbackCapture();
     HRESULT CreateWAVFile();
+    HRESULT WriteWAVHeader(FILE* file);
     HRESULT FixWAVHeader();
     HRESULT OnAudioSampleRequested();
 
@@ -79,6 +83,7 @@ private:
     // and the ActivateCompleted callback.
     PCWSTR m_outputFileName = nullptr;
     HRESULT m_activateResult = E_UNEXPECTED;
+    bool m_streamOutput = false; // Флаг, указывающий на вывод в поток
 
     DeviceState m_DeviceState{ DeviceState::Uninitialized };
     wil::unique_event_nothrow m_hActivateCompleted;

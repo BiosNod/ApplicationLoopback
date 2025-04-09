@@ -14,7 +14,7 @@ void usage()
         L"<pid> is the process ID to capture or exclude from capture\n"
         L"includetree includes audio from that process and its child processes\n"
         L"excludetree includes audio from all processes except that process and its child processes\n"
-        L"<outputfilename> is the WAV file to receive the captured audio (10 seconds)\n"
+        L"<outputfilename> is the WAV file to receive the captured audio, or '-stream' to output to stdout\n"
         L"\n"
         L"Examples:\n"
         L"\n"
@@ -24,7 +24,14 @@ void usage()
         L"\n"
         L"ApplicationLoopback 1234 excludetree CapturedAudio.wav\n"
         L"\n"
-        L"  Captures audio from all processes except process 1234 and its children.\n";
+        L"  Captures audio from all processes except process 1234 and its children.\n"
+        L"\n"
+        L"ApplicationLoopback 1234 includetree -stream > output.wav\n"
+        L"\n"
+        L"  Captures audio from process 1234 and outputs to stdout, which can be redirected.\n";
+        L"ApplicationLoopback 1234 includetree -stream\n"
+        L"\n"
+        L"  Captures audio from process 1234 and outputs to stdout without redirection.\n";
 }
 
 int wmain(int argc, wchar_t* argv[])
@@ -59,19 +66,28 @@ int wmain(int argc, wchar_t* argv[])
 
     PCWSTR outputFile = argv[3];
 
+    // Если используется режим потока, не выводим сообщения в консоль, чтобы не смешивать с бинарными данными
+    bool isStreamMode = (wcscmp(outputFile, L"-stream") == 0);
+
     CLoopbackCapture loopbackCapture;
     HRESULT hr = loopbackCapture.StartCaptureAsync(processId, includeProcessTree, outputFile);
     if (FAILED(hr))
     {
-        wil::unique_hlocal_string message;
-        FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ALLOCATE_BUFFER, nullptr, hr,
-            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (PWSTR)&message, 0, nullptr);
-        std::wcout << L"Failed to start capture\n0x" << std::hex << hr << L": " << message.get() << L"\n";
+        if (!isStreamMode)
+        {
+            wil::unique_hlocal_string message;
+            FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ALLOCATE_BUFFER, nullptr, hr,
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (PWSTR)&message, 0, nullptr);
+            std::wcout << L"Failed to start capture\n0x" << std::hex << hr << L": " << message.get() << L"\n";
+        }
     }
     else
     {
-        std::wcout << L"Capturing 10 seconds of audio." << std::endl;
-        
+        if (!isStreamMode)
+        {
+            std::wcout << L"Capturing audio. Press 'Q' to stop..." << std::endl;
+        }
+
         // Ожидаем нажатия клавиши Q для остановки
         bool stopCapture = false;
         while (!stopCapture)
@@ -89,8 +105,10 @@ int wmain(int argc, wchar_t* argv[])
 
         loopbackCapture.StopCaptureAsync();
 
-        std::wcout << L"Finished.\n";
+        if (!isStreamMode)
+        {
+            std::wcout << L"Finished.\n";
+        }
     }
-
     return 0;
 }
