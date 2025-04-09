@@ -34,6 +34,17 @@ void usage()
         L"  Captures audio from process 1234 and outputs to stdout without redirection.\n";
 }
 
+bool ProcessExists(DWORD pid)
+{
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (hProcess != NULL)
+    {
+        CloseHandle(hProcess);
+        return true;
+    }
+    return false;
+}
+
 int wmain(int argc, wchar_t* argv[])
 {
     if (argc != 4)
@@ -47,6 +58,13 @@ int wmain(int argc, wchar_t* argv[])
     {
         usage();
         return 0;
+    }
+
+    // Check if the process exists
+    if (!ProcessExists(processId))
+    {
+        std::wcerr << L"Error: Process with ID " << processId << L" does not exist or is not accessible.\n";
+        return 1;
     }
 
     bool includeProcessTree;
