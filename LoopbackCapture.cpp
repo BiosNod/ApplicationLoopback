@@ -6,7 +6,7 @@
 #include "LoopbackCapture.h"
 
 #define BITS_PER_BYTE 8
-#define SILENCE_THRESHOLD 10  // Порог для определения тишины (для 16-битных сэмплов)
+#define SILENCE_THRESHOLD 10  // Threshold for determining silence (for 16-bit samples)
 
 HRESULT CLoopbackCapture::SetDeviceStateErrorIfFailed(HRESULT hr)
 {
@@ -49,10 +49,10 @@ CLoopbackCapture::~CLoopbackCapture()
     }
 }
 
-// Определяет, содержит ли буфер аудиосигнал или только тишину
+// Check if the audio data contains actual sound or just silence
 bool CLoopbackCapture::ContainsAudio(const BYTE* data, UINT32 byteCount)
 {
-    // Для 16-битных сэмплов
+    // For 16-bit audio samples
     if (m_CaptureFormat.wBitsPerSample == 16)
     {
         const SHORT* samples = reinterpret_cast<const SHORT*>(data);
@@ -62,15 +62,15 @@ bool CLoopbackCapture::ContainsAudio(const BYTE* data, UINT32 byteCount)
         {
             if (abs(samples[i]) > SILENCE_THRESHOLD)
             {
-                return true; // Найден звук
+                return true; // Contains sound
             }
         }
-        return false; // Только тишина
+        return false; // Only silence
     }
-    // Можно добавить обработку для других битностей (8, 24, 32)
+    // Could add support for other sample formats (8, 24, 32)
     else
     {
-        // По умолчанию для неподдерживаемых форматов считаем, что звук есть
+        // By default for unsupported formats, assume there is sound
         return true;
     }
 }
@@ -148,14 +148,17 @@ HRESULT CLoopbackCapture::ActivateCompleted(IActivateAudioInterfaceAsyncOperatio
             // Tell the system which event handle it should signal when an audio buffer is ready to be processed by the client
             RETURN_IF_FAILED(m_AudioClient->SetEventHandle(m_SampleReadyEvent.get()));
 
-            // Check if we're using stream output or file output
+            // Check if we're using stream output
             if (m_streamOutput)
             {
                 // For stream output, we just prepare the binary mode for stdout
                 _setmode(_fileno(stdout), _O_BINARY);
 
-                // If streaming, write WAV header to stdout
-                WriteWAVHeader(stdout);
+                // If streaming and not skipping headers, write WAV header to stdout
+                if (!m_skipHeaders)
+                {
+                    WriteWAVHeader(stdout);
+                }
             }
             else
             {
@@ -283,10 +286,13 @@ HRESULT CLoopbackCapture::FixWAVHeader()
     return S_OK;
 }
 
-HRESULT CLoopbackCapture::StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName, bool skipSilence)
+HRESULT CLoopbackCapture::StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName, bool skipSilence, bool skipHeaders)
 {
-    // Сохраняем флаг пропуска тишины
+    // Save the silence skipping flag
     m_skipSilence = skipSilence;
+
+    // Save the header skipping flag
+    m_skipHeaders = skipHeaders;
 
     // Check if we're using stream output
     if (wcscmp(outputFileName, L"-stream") == 0)
@@ -298,6 +304,12 @@ HRESULT CLoopbackCapture::StartCaptureAsync(DWORD processId, bool includeProcess
     {
         m_streamOutput = false;
         m_outputFileName = outputFileName;
+
+        // Cannot skip headers in file mode
+        if (m_skipHeaders)
+        {
+            return E_INVALIDARG;
+        }
     }
 
     auto resetOutputFileName = wil::scope_exit([&] { m_outputFileName = nullptr; });
@@ -395,8 +407,12 @@ HRESULT CLoopbackCapture::FinishCaptureAsync()
 //
 HRESULT CLoopbackCapture::OnFinishCapture(IMFAsyncResult* pResult)
 {
-    // FixWAVHeader will set the DeviceStateStopped when all async tasks are complete
-    HRESULT hr = FixWAVHeader();
+    // Only fix WAV header if we're not in skip headers mode
+    HRESULT hr = S_OK;
+    if (!m_skipHeaders || !m_streamOutput)
+    {
+        hr = FixWAVHeader();
+    }
 
     m_DeviceState = DeviceState::Stopped;
 

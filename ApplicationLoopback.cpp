@@ -9,13 +9,14 @@
 void usage()
 {
     std::wcout <<
-        L"Usage: ApplicationLoopback <pid> <includetree|excludetree> <outputfilename> [-silence]\n"
+        L"Usage: ApplicationLoopback <pid> <includetree|excludetree> <outputfilename> [-silence] [-skipheaders]\n"
         L"\n"
         L"<pid> is the process ID to capture or exclude from capture\n"
         L"includetree includes audio from that process and its child processes\n"
         L"excludetree includes audio from all processes except that process and its child processes\n"
         L"<outputfilename> is the WAV file to receive the captured audio, or '-stream' to output to stdout\n"
         L"[-silence] is an optional flag to skip recording silence (only record when sound is present)\n"
+        L"[-skipheaders] is an optional flag to skip WAV headers when using -stream mode\n"
         L"\n"
         L"Examples:\n"
         L"\n"
@@ -40,7 +41,15 @@ void usage()
         L"\n"
         L"ApplicationLoopback 1234 includetree CapturedAudio.wav -silence\n"
         L"\n"
-        L"  Captures audio from process 1234 and its children, skipping periods of silence.\n";
+        L"  Captures audio from process 1234 and its children, skipping periods of silence.\n"
+        L"\n"
+        L"ApplicationLoopback 1234 includetree -stream -skipheaders\n"
+        L"\n"
+        L"  Captures audio from process 1234 and outputs to stdout without WAV headers.\n"
+        L"\n"
+        L"ApplicationLoopback 1234 includetree -stream -silence -skipheaders\n"
+        L"\n"
+        L"  Captures audio from process 1234, skips silence, and outputs to stdout without WAV headers.\n";
 }
 
 bool ProcessExists(DWORD pid)
@@ -56,7 +65,7 @@ bool ProcessExists(DWORD pid)
 
 int wmain(int argc, wchar_t* argv[])
 {
-    if (argc < 4 || argc > 5)
+    if (argc < 4 || argc > 6)
     {
         usage();
         return 0;
@@ -93,19 +102,40 @@ int wmain(int argc, wchar_t* argv[])
 
     PCWSTR outputFile = argv[3];
 
-    // Check for -silence flag
+    // Check for optional flags
     bool skipSilence = false;
-    if (argc == 5 && wcscmp(argv[4], L"-silence") == 0)
+    bool skipHeaders = false;
+
+    for (int i = 4; i < argc; i++)
     {
-        std::wcout << L"SKIP SILEBCE!!\n";
-        skipSilence = true;
+        if (wcscmp(argv[i], L"-silence") == 0)
+        {
+            skipSilence = true;
+        }
+        else if (wcscmp(argv[i], L"-skipheaders") == 0)
+        {
+            skipHeaders = true;
+        }
+        else
+        {
+            std::wcerr << L"Unknown parameter: " << argv[i] << L"\n";
+            usage();
+            return 1;
+        }
     }
 
-    // ≈сли используетс€ режим потока, то выводим сообщени€ в консоль, иначе их оставл€ем в командной строке
+    // Check if skipHeaders is used with a file output (not valid)
+    if (skipHeaders && wcscmp(outputFile, L"-stream") != 0)
+    {
+        std::wcerr << L"Error: -skipheaders flag can only be used with -stream output mode.\n";
+        return 1;
+    }
+
+    // If stream mode is chosen, inform about status
     bool isStreamMode = (wcscmp(outputFile, L"-stream") == 0);
 
     CLoopbackCapture loopbackCapture;
-    HRESULT hr = loopbackCapture.StartCaptureAsync(processId, includeProcessTree, outputFile, skipSilence);
+    HRESULT hr = loopbackCapture.StartCaptureAsync(processId, includeProcessTree, outputFile, skipSilence, skipHeaders);
     if (FAILED(hr))
     {
         if (!isStreamMode)
@@ -120,22 +150,24 @@ int wmain(int argc, wchar_t* argv[])
     {
         if (!isStreamMode)
         {
-            std::wcout << L"Capturing audio" << (skipSilence ? L" (skipping silence)" : L"") << L". Press 'Q' to stop..." << std::endl;
+            std::wcout << L"Capturing audio" << (skipSilence ? L" (skipping silence)" : L"")
+                << (skipHeaders && isStreamMode ? L" (skipping WAV headers)" : L"")
+                << L". Press 'Q' to stop..." << std::endl;
         }
 
-        // ќжидаем нажати€ клавиши Q дл€ остановки
+        // Wait for Q key to stop
         bool stopCapture = false;
         while (!stopCapture)
         {
-            if (_kbhit()) // ѕровер€ем, нажата ли клавиша
+            if (_kbhit()) // Check if key was pressed
             {
-                int key = _getch(); // ѕолучаем код нажатой клавиши
+                int key = _getch(); // Get the key code
                 if (key == 'q' || key == 'Q')
                 {
                     stopCapture = true;
                 }
             }
-            Sleep(100); // Ќебольша€ задержка дл€ снижени€ нагрузки на CPU
+            Sleep(100); // Small delay to prevent high CPU usage
         }
 
         loopbackCapture.StopCaptureAsync();

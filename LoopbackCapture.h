@@ -5,9 +5,9 @@
 #include <initguid.h>
 #include <guiddef.h>
 #include <mfapi.h>
-#include <fcntl.h> // для _O_BINARY
-#include <io.h>    // для _setmode и _fileno
-#include <stdio.h> // для FILE и файловых функций
+#include <fcntl.h> // for _O_BINARY
+#include <io.h>    // for _setmode and _fileno
+#include <stdio.h> // for FILE and related functions
 
 #include <wrl\implements.h>
 #include <wil\com.h>
@@ -24,7 +24,8 @@ public:
     CLoopbackCapture() = default;
     ~CLoopbackCapture();
 
-    HRESULT StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName, bool skipSilence = false);
+    HRESULT StartCaptureAsync(DWORD processId, bool includeProcessTree, PCWSTR outputFileName,
+        bool skipSilence = false, bool skipHeaders = false);
     HRESULT StopCaptureAsync();
 
     METHODASYNCCALLBACK(CLoopbackCapture, StartCapture, OnStartCapture);
@@ -37,7 +38,7 @@ public:
 
 private:
     // NB: All states >= Initialized will allow some methods
-        // to be called successfully on the Audio Client
+    // to be called successfully on the Audio Client
     enum class DeviceState
     {
         Uninitialized,
@@ -60,7 +61,7 @@ private:
     HRESULT FixWAVHeader();
     HRESULT OnAudioSampleRequested();
 
-    // Проверяет, содержит ли буфер звук или тишину
+    // Check if audio data contains actual sound and not just silence
     bool ContainsAudio(const BYTE* data, UINT32 byteCount);
 
     HRESULT ActivateAudioInterface(DWORD processId, bool includeProcessTree);
@@ -86,8 +87,9 @@ private:
     // and the ActivateCompleted callback.
     PCWSTR m_outputFileName = nullptr;
     HRESULT m_activateResult = E_UNEXPECTED;
-    bool m_streamOutput = false; // флаг, указывающий на вывод в поток
-    bool m_skipSilence = false;  // флаг для пропуска тишины
+    bool m_streamOutput = false;  // Flag indicating output to stream
+    bool m_skipSilence = false;   // Flag for skipping silence
+    bool m_skipHeaders = false;   // Flag for skipping WAV headers in stream mode
 
     DeviceState m_DeviceState{ DeviceState::Uninitialized };
     wil::unique_event_nothrow m_hActivateCompleted;
