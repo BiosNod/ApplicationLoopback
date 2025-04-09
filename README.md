@@ -1,20 +1,20 @@
-# ? ApplicationLoopback � Windows Audio Capture Tool
+# 🎧 ApplicationLoopback — Windows Audio Capture Tool
 
 A command-line utility to capture/block audio from specific Windows processes. Perfect for streaming, podcasting, and debugging!
 
 ---
 
-## ? Key Features
+## 🚀 Key Features
 
-- ? **Process tree control** - `includetree`/`excludetree` modes
-- ? **PID targeting** - Capture audio from specific processes
-- ? **WAV output** or **raw PCM stream** (`-stream` flag)
-- ? **Smart silence skipping** (16-bit threshold detection)
-- ? **Low-latency capture** (<50ms buffer)
+- 🌳 **Process tree control** - `includetree`/`excludetree` modes
+- 🎯 **PID targeting** - Capture audio from specific processes
+- 📁 **WAV output** or **raw PCM stream** (`-stream` flag)
+- 🔇 **Smart silence skipping** (16-bit threshold detection)
+- ⚡ **Low-latency capture** (<50ms buffer)
 
 ---
 
-## ? Installation
+## 🔧 Installation
 
 ### Requirements
 - Windows 10/11 x64
@@ -32,7 +32,7 @@ MSBuild ApplicationLoopback.sln /p:Configuration=Release /p:Platform=x64
 
 ---
 
-## ? Usage Syntax
+## 📖 Usage Syntax
 
 ```bash
 ApplicationLoopback.exe [PID] [MODE] [OUTPUT] [OPTIONS]
@@ -53,7 +53,7 @@ ApplicationLoopback.exe [PID] [MODE] [OUTPUT] [OPTIONS]
 
 ---
 
-## ? Examples
+## 🌟 Examples
 
 ### Basic Capture
 ```bash
